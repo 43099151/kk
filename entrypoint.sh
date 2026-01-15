@@ -70,25 +70,13 @@ fi
 echo "==> [SSH] 启动 sshd..."
 /usr/sbin/sshd -D &
 
-# --- 5. 启动 Python 保活 (7860) ---
-cat > /fake_server.py <<EOF
-import http.server, socketserver
-class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        try:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b"Hugging Face Keep-Alive: Running Quark with FRP")
-        except: pass
-    def log_message(self, format, *args): pass
-if __name__ == "__main__":
-    try:
-        with socketserver.TCPServer(("", 7860), HealthCheckHandler) as httpd:
-            httpd.serve_forever()
-    except: pass
-EOF
-python3 /fake_server.py &
+# --- 5. [已修改] 启动端口转发 (7860 -> 8008) ---
+# 删除原来的 Python 代码，改用 socat 转发
+echo "==> [Network] 启动端口转发: HF(7860) -> App(5005)..."
+# TCP-LISTEN:7860  : 监听 HF 的入口端口
+# fork             : 允许并发连接
+# TCP:127.0.0.1:8008 : 转发给内部的主程序端口
+socat TCP-LISTEN:7860,fork,bind=0.0.0.0 TCP:127.0.0.1:5005 &
 
 # --- 6. 启动 Tailscale (Userspace 模式) ---
 echo "==> [Tailscale] 初始化..."
@@ -174,4 +162,5 @@ ${APP_COMMAND} || {
     ls -R /app
     echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
     sleep infinity
+
 }
